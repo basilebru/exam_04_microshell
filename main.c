@@ -41,10 +41,9 @@ char **cut_av(char **av, int start, int stop)
 
 int exec_cmd(char **cmd, char **env)
 {
-    int ret;
-    ret = execve(cmd[0], cmd, env);
+    execve(cmd[0], cmd, env);
     printf("error\n");
-    exit(ret);
+    exit(1); // exit 1 in case of error
 }
 
 int exec_pipe(char **av, char **env)
@@ -56,6 +55,11 @@ int exec_pipe(char **av, char **env)
     int start = 0;
     int count = 0;
     int status;
+    int pid;
+
+    print_av(av);
+    if (strcmp(av[0], "cd") == 0)
+        return (chdir(av[1]));
 
     int ac = 0;
     while (av[ac])
@@ -68,19 +72,22 @@ int exec_pipe(char **av, char **env)
             count++;
             cmd = cut_av(av, start, i);
             // print_av(cmd);
-            if (fork() == 0)
+
+            if ((pid = fork()) == 0)
                 ret = exec_cmd(cmd, env);
             start = i + 1;
         }
         i++;
     }
     i = 0;
+
     while (i < count)
     {
-        waitpid(-1, &status, 0);
+        if (waitpid(-1, &status, 0) == pid)
+            ret = WEXITSTATUS(status);
         i++;
     }
-    
+    printf("ret: %d\n", ret);
     return ret;
 }
 
@@ -102,4 +109,5 @@ int main(int ac, char **av, char **env)
         }
         i++;
     }
+    return ret;
 }
