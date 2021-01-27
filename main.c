@@ -67,6 +67,17 @@ int exit_fatal()
     return (EXIT_FAILURE_SYSTEM);
 }
 
+void close_pipes(int fd[][2], int num)
+{
+    int i = 0;
+    while (i < num)
+    {
+        close(fd[i][0]);
+        close(fd[i][1]);
+        i++;
+    }
+}
+
 int exec_pipe(char **av, char **env)
 {
     // cut av into cmds (separator = ;)
@@ -77,6 +88,7 @@ int exec_pipe(char **av, char **env)
     int count = 0;
     int status;
     int pid;
+    int nb_pipes = 0;
 
     int ac = 0;
     while (av[ac])
@@ -102,48 +114,66 @@ int exec_pipe(char **av, char **env)
         return (EXIT_SUCCESS);
     }
 
-    int fd[2];
-    if (pipe(fd) == -1)
-        return (exit_fatal());
-    // dup2(fd[READ_END], STDIN_FILENO);
-    // close(fd[READ_END]);
-    // dup2(fd[WRITE_END], STDOUT_FILENO);
-    // close(fd[WRITE_END]);
+    // count pipes
+    i = 0;
+    while (av[i])
+    {
+        if (strcmp(av[i], "|") == 0)
+            nb_pipes++;
+        i++;
+    }
 
+    printf("num pipes: %d\n", nb_pipes);
+    // create pipes
+    int fd[nb_pipes][2];
+    i = 0;
+    while (i < nb_pipes)
+    {
+        if (pipe(fd[i]) == -1)
+            return (exit_fatal());
+        i++;
+    }
+    
+
+    i = 0;
     while(i < ac + 1)
     {
         if (av[i] == NULL || strcmp(av[i], "|") == 0)
         {
-            count++;
             cmd = cut_av(av, start, i);
             // print_av(cmd);
 
             if ((pid = fork()) == 0)
             {
-                if (count == 1)
+                if (count == 0)
                 {
-                    if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
+                    if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
-                    close(fd[WRITE_END]);
-                    close(fd[READ_END]);
+                }
+                else if (count == nb_pipes)
+                {
+                    if (dup2(fd[count - 1][READ_END], STDIN_FILENO) == -1)
+                        return (exit_fatal());
                 }
                 else
                 {
-                    if (dup2(fd[READ_END], STDIN_FILENO) == -1)
+                    if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
-                    close(fd[READ_END]);
-                    close(fd[WRITE_END]);
+                    if (dup2(fd[count - 1][READ_END], STDIN_FILENO) == -1)
+                        return (exit_fatal());
                 }
+                
+                close_pipes(fd, nb_pipes);
                 ret = exec_cmd(cmd, env);
             }
             if (pid == -1)
                 return (exit_fatal());
             start = i + 1;
+            count++;
         }
         i++;
     }
-    close(fd[WRITE_END]);
-    close(fd[READ_END]);
+    close_pipes(fd, nb_pipes);
     i = 0;
     while (i < count)
     {
