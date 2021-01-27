@@ -145,17 +145,17 @@ int exec_pipe(char **av, char **env)
 
             if ((pid = fork()) == 0)
             {
-                if (count == 0)
+                if (nb_pipes && count == 0)
                 {
                     if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
                 }
-                else if (count == nb_pipes)
+                else if (nb_pipes && count == nb_pipes)
                 {
                     if (dup2(fd[count - 1][READ_END], STDIN_FILENO) == -1)
                         return (exit_fatal());
                 }
-                else
+                else if (nb_pipes)
                 {
                     if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
@@ -200,11 +200,20 @@ int main(int ac, char **av, char **env)
     {
         if (av[i] == NULL || strcmp(av[i], ";") == 0)
         {
-            cmd = cut_av(av, start, i);
-            ret = exec_pipe(cmd, env);
-            if (ret == EXIT_FAILURE_SYSTEM) // attention, ne pas continuer si rencontre un exit_failure du a un appel systeme: - "Si un appel systeme, sauf execve et chdir, retourne une erreur votre programme devra immédiatement afficher dans STDERR "error: fatal" suivi d'un '\n' et sortir"
-                return EXIT_FAILURE;
-            start = i + 1;
+            // while (strcmp(av[i + 1], ";") == 0)
+            //     i++;
+            if (i == start) // case of "empty" commands between ";"
+            {
+                start++;
+            }
+            else
+            {
+                cmd = cut_av(av, start, i);
+                ret = exec_pipe(cmd, env);
+                if (ret == EXIT_FAILURE_SYSTEM) // attention, ne pas continuer si rencontre un exit_failure du a un appel systeme: - "Si un appel systeme, sauf execve et chdir, retourne une erreur votre programme devra immédiatement afficher dans STDERR "error: fatal" suivi d'un '\n' et sortir"
+                    return EXIT_FAILURE;
+                start = i + 1;
+            }
         }
         i++;
     }
