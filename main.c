@@ -123,7 +123,7 @@ int exec_pipe(char **av, char **env)
         i++;
     }
 
-    printf("num pipes: %d\n", nb_pipes);
+    // printf("num pipes: %d\n", nb_pipes);
     // create pipes
     int fd[nb_pipes][2];
     i = 0;
