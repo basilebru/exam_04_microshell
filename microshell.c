@@ -93,6 +93,8 @@ int exec_pipe(char **av, char **env)
     int ac = 0;
     while (av[ac])
         ac++;
+    if (ac == 0)
+        return(EXIT_SUCCESS);
     // print_av(av);
     
     if (strcmp(av[0], "cd") == 0)
@@ -123,17 +125,8 @@ int exec_pipe(char **av, char **env)
         i++;
     }
 
-    // printf("num pipes: %d\n", nb_pipes);
-    // create pipes
-    int fd[nb_pipes][2];
-    i = 0;
-    while (i < nb_pipes)
-    {
-        if (pipe(fd[i]) == -1)
-            return (exit_fatal());
-        i++;
-    }
-    
+    int fd[2];
+    int fd_prev[2];
 
     i = 0;
     while(i < ac + 1)
@@ -141,39 +134,60 @@ int exec_pipe(char **av, char **env)
         if (av[i] == NULL || strcmp(av[i], "|") == 0)
         {
             cmd = cut_av(av, start, i);
-            // print_av(cmd);
 
+            fd_prev[READ_END] = fd[READ_END];
+            fd_prev[WRITE_END] = fd[WRITE_END];
+            pipe(fd);
+
+            // for each command
+            // fork, dup and execve
             if ((pid = fork()) == 0)
             {
-                if (nb_pipes && count == 0)
+                if (count == 0)
                 {
-                    if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
+                    if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
                 }
-                else if (nb_pipes && count == nb_pipes)
+                else if (count == nb_pipes)
                 {
-                    if (dup2(fd[count - 1][READ_END], STDIN_FILENO) == -1)
+                    if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
                         return (exit_fatal());
                 }
-                else if (nb_pipes)
+                else
                 {
-                    if (dup2(fd[count][WRITE_END], STDOUT_FILENO) == -1)
+                    if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
                         return (exit_fatal());
-                    if (dup2(fd[count - 1][READ_END], STDIN_FILENO) == -1)
+                    if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
                         return (exit_fatal());
                 }
-                
-                close_pipes(fd, nb_pipes);
+                close(fd[0]);
+                close(fd[1]);
+                if (count)
+                {
+                    close(fd_prev[0]);
+                    close(fd_prev[1]);
+                }
                 ret = exec_cmd(cmd, env);
             }
             if (pid == -1)
                 return (exit_fatal());
+
+            if (count)
+            {
+                close(fd_prev[0]);
+                close(fd_prev[1]);
+            }
+            if (count == nb_pipes)
+            {
+                close(fd[0]);
+                close(fd[1]);
+            }
             start = i + 1;
             count++;
         }
+     
         i++;
     }
-    close_pipes(fd, nb_pipes);
     i = 0;
     while (i < count)
     {
@@ -181,7 +195,7 @@ int exec_pipe(char **av, char **env)
             ret = WEXITSTATUS(status);
         i++;
     }
-    // printf("ret: %d\n", ret);
+
     return ret;
 }
 
@@ -200,20 +214,11 @@ int main(int ac, char **av, char **env)
     {
         if (av[i] == NULL || strcmp(av[i], ";") == 0)
         {
-            // while (strcmp(av[i + 1], ";") == 0)
-            //     i++;
-            if (i == start) // case of "empty" commands between ";"
-            {
-                start++;
-            }
-            else
-            {
-                cmd = cut_av(av, start, i);
-                ret = exec_pipe(cmd, env);
-                if (ret == EXIT_FAILURE_SYSTEM) // attention, ne pas continuer si rencontre un exit_failure du a un appel systeme: - "Si un appel systeme, sauf execve et chdir, retourne une erreur votre programme devra immédiatement afficher dans STDERR "error: fatal" suivi d'un '\n' et sortir"
-                    return EXIT_FAILURE;
-                start = i + 1;
-            }
+            cmd = cut_av(av, start, i);
+            ret = exec_pipe(cmd, env);
+            if (ret == EXIT_FAILURE_SYSTEM) // attention, ne pas continuer si rencontre un exit_failure du a un appel systeme: - "Si un appel systeme, sauf execve et chdir, retourne une erreur votre programme devra immédiatement afficher dans STDERR "error: fatal" suivi d'un '\n' et sortir"
+                return EXIT_FAILURE;
+            start = i + 1;
         }
         i++;
     }
