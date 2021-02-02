@@ -80,7 +80,6 @@ void close_pipes(int fd[][2], int num)
 
 int exec_pipe(char **av, char **env)
 {
-    // cut av into cmds (separator = ;)
     char **cmd;
     int ret;
     int i = 1;
@@ -90,13 +89,14 @@ int exec_pipe(char **av, char **env)
     int pid;
     int nb_pipes = 0;
 
+    // 0 - get size of av
     int ac = 0;
     while (av[ac])
         ac++;
-    if (ac == 0)
+    if (ac == 0) // case of sucessive ";", or ";" followed or preceded by nothing
         return(EXIT_SUCCESS);
-    // print_av(av);
     
+    // 1 - handle cd
     if (strcmp(av[0], "cd") == 0)
     {
         ret = chdir(av[1]);
@@ -116,7 +116,7 @@ int exec_pipe(char **av, char **env)
         return (EXIT_SUCCESS);
     }
 
-    // count pipes
+    // 2 - count pipes
     i = 0;
     while (av[i])
     {
@@ -128,6 +128,8 @@ int exec_pipe(char **av, char **env)
     int fd[2];
     int fd_prev[2];
 
+    // 3 - cut av into commands using "|" as a separator
+    // for each command: pipe, fork dup and exec
     i = 0;
     while(i < ac + 1)
     {
@@ -135,31 +137,38 @@ int exec_pipe(char **av, char **env)
         {
             cmd = cut_av(av, start, i);
 
+            // each subprocess has maximum two sets of pipes (4 fds) open:
+            // - fd
+            // - fd_prev
+            // (the 1st subprocess has only fd open)
             fd_prev[READ_END] = fd[READ_END];
             fd_prev[WRITE_END] = fd[WRITE_END];
             pipe(fd);
 
-            // for each command
-            // fork, dup and execve
             if ((pid = fork()) == 0)
             {
-                if (count == 0)
+                if (nb_pipes != 0) // no dup if there is no pipe
                 {
-                    if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
-                        return (exit_fatal());
+                    if (count == 0)
+                    {
+                        if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
+                            return (exit_fatal());
+                    }
+                    else if (count == nb_pipes)
+                    {
+                        if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
+                            return (exit_fatal());
+                    }
+                    else
+                    {
+                        if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
+                            return (exit_fatal());
+                        if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
+                            return (exit_fatal());
+                    }
                 }
-                else if (count == nb_pipes)
-                {
-                    if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
-                        return (exit_fatal());
-                }
-                else
-                {
-                    if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1)
-                        return (exit_fatal());
-                    if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
-                        return (exit_fatal());
-                }
+
+                // we close all 4 fds
                 close(fd[0]);
                 close(fd[1]);
                 if (count)
@@ -167,16 +176,22 @@ int exec_pipe(char **av, char **env)
                     close(fd_prev[0]);
                     close(fd_prev[1]);
                 }
+                // Rq: fd is still "active", as we have duped one end to stdout (a pipe remains active as long as one of its fd is open)
+                // --> the next subprocess will be able to receive data from this pipe
+                // it will remain active until the next subprocess is done reading
                 ret = exec_cmd(cmd, env);
             }
+
             if (pid == -1)
                 return (exit_fatal());
 
+            // we close only fd_prev (as we still need fd for the next pipe !)
             if (count)
             {
                 close(fd_prev[0]);
                 close(fd_prev[1]);
             }
+            // if its the last pipe, we can close fd, as we no longer need it
             if (count == nb_pipes)
             {
                 close(fd[0]);
@@ -185,9 +200,11 @@ int exec_pipe(char **av, char **env)
             start = i + 1;
             count++;
         }
-     
+    
         i++;
     }
+
+    // 4 - wait for all the child processes, and store the return value of the last one
     i = 0;
     while (i < count)
     {
