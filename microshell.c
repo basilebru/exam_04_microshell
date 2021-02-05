@@ -143,11 +143,13 @@ int exec_pipe(char **av, char **env)
             // (the 1st subprocess has only fd open)
             fd_prev[READ_END] = fd[READ_END];
             fd_prev[WRITE_END] = fd[WRITE_END];
-            pipe(fd);
+            
+            if (nb_pipes)
+                pipe(fd);
 
             if ((pid = fork()) == 0)
             {
-                if (nb_pipes != 0) // no dup if there is no pipe
+                if (nb_pipes) // no dup if there is no pipe
                 {
                     if (count == 0)
                     {
@@ -198,8 +200,11 @@ int exec_pipe(char **av, char **env)
         i++;
     }
     // we can close the last fd open
-    close(fd[0]);
-    close(fd[1]);
+    if (nb_pipes)
+    {
+        close(fd[0]);
+        close(fd[1]);
+    }
 
     // 4 - wait for all the child processes, and store the return value of the last one
     i = 0;
@@ -236,6 +241,10 @@ int main(int ac, char **av, char **env)
         }
         i++;
     }
+    // while(1)
+    // {
+    //     i++;
+    // }
     // printf("cwd: %s\n", getcwd(NULL, 0));
     return ret;
 }
