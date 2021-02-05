@@ -191,18 +191,15 @@ int exec_pipe(char **av, char **env)
                 close(fd_prev[0]);
                 close(fd_prev[1]);
             }
-            // if its the last pipe, we can close fd, as we no longer need it
-            if (count == nb_pipes)
-            {
-                close(fd[0]);
-                close(fd[1]);
-            }
             start = i + 1;
             count++;
         }
     
         i++;
     }
+    // we can close the last fd open
+    close(fd[0]);
+    close(fd[1]);
 
     // 4 - wait for all the child processes, and store the return value of the last one
     i = 0;
