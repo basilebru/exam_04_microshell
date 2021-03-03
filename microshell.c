@@ -168,15 +168,15 @@ int exec_pipe(char **av, char **env)
                         if (dup2(fd_prev[READ_END], STDIN_FILENO) == -1)
                             return (exit_fatal());
                     }
-                }
 
                 // we close all 4 fds
-                close(fd[0]);
-                close(fd[1]);
-                if (count)
-                {
-                    close(fd_prev[0]);
-                    close(fd_prev[1]);
+                    close(fd[0]);
+                    close(fd[1]);
+                    if (count)
+                    {
+                        close(fd_prev[0]);
+                        close(fd_prev[1]);
+                    }
                 }
                 // Rq: fd is still "active", as we have duped one end to stdout (a pipe remains active as long as one of its fd is open)
                 // --> the next subprocess will be able to receive data from this pipe
